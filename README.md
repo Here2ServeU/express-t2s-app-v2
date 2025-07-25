@@ -1,225 +1,163 @@
-# Express T2S Web App – Beginner-Friendly DevOps Project
+# Express T2S App - Version 3
 
-## Overview
+## Purpose
 
-Welcome! This project walks you step-by-step through deploying a web app using real-world DevOps tools, even if you have no technical background.
+This version deploys the Dockerized Express T2S web application to AWS using ECS (Elastic Container Service) with Fargate, a serverless container compute engine. It also introduces a GitHub Actions CI/CD pipeline that automatically builds the Docker image, pushes it to AWS ECR (Elastic Container Registry), and triggers deployment to ECS.
 
-You'll learn to:
-- Build and run a Node.js + Express web app
-- Containerize it with Docker
-- Push it to AWS using Bash, Python, and Terraform
-- Understand what each file and command does along the way
+This version is ideal for those who want to learn how to automate deployment pipelines using real-world tools used in DevOps and Cloud Engineering.
 
 ---
 
-## What's Inside This Project?
+## Features
 
-| File/Folder | Purpose |
-|-------------|---------|
-| `index.js` | Main application code that runs the web server |
-| `public/index.html` | A simple form for users to sign up |
-| `.gitignore` | Tells Git what to exclude (like secret files or system clutter) |
-| `Dockerfile` | Instructions to turn the app into a Docker container |
-| `scripts/bash_deploy_to_ecr.sh` | A script to automate AWS ECR deployment using Bash |
-| `scripts/deploy_to_ecr.py` | The same deployment automated using Python |
-| `terraform/` | Contains files to automate cloud infrastructure setup |
-| `README.md` | This guide! |
+- **GitHub Actions CI/CD pipeline** for build and deployment
+- **Docker image built locally or in pipeline**
+- **AWS ECR** integration for image hosting
+- **AWS ECS (Fargate)** for serverless container orchestration
+- **Load balancer** for handling traffic
+- Environment variables managed through AWS
 
 ---
 
-## Step-by-Step Setup
+## Project Structure
 
-### 1. Clone the Project
+```
+express-t2s-app-v3/
+├── .github/
+│   └── workflows/
+│       └── ci.yml                # GitHub Actions pipeline definition
+├── Dockerfile                    # Docker build instructions
+├── index.js                      # Node.js + Express server
+├── package.json
+└── README.md
+```
+
+---
+
+## Prerequisites
+
+Before deploying, ensure you have the following:
+
+- **GitHub account** with repository created
+- **AWS account** with:
+  - ECR repository created
+  - ECS Cluster and Fargate task role set up
+  - IAM user with programmatic access
+- **AWS CLI** installed and configured on your machine
+- **GitHub Secrets** added:
+  - `AWS_ACCESS_KEY_ID`
+  - `AWS_SECRET_ACCESS_KEY`
+  - `AWS_REGION`
+  - `ECR_REPO_URI`
+
+---
+
+## How the Deployment Works (Step-by-Step)
+
+1. **Docker Image Built**:
+   The GitHub Actions workflow builds the Docker image from your `Dockerfile`.
+
+2. **Push Image to ECR**:
+   The built image is pushed to your AWS ECR repository.
+
+3. **Trigger ECS Update**:
+   The ECS task definition is updated to use the new image. ECS then replaces the running task with the new one.
+
+---
+
+## GitHub Actions Workflow Explained
+
+Located at `.github/workflows/ci.yml`:
+
+```yaml
+name: Build and Deploy to ECS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Login to AWS ECR
+      run: |
+        aws configure set region ${{ secrets.AWS_REGION }}
+        aws ecr get-login-password | docker login --username AWS --password-stdin ${{ secrets.ECR_REPO_URI }}
+
+    - name: Build Docker Image
+      run: docker build -t t2s-web .
+
+    - name: Tag and Push Docker Image
+      run: |
+        docker tag t2s-web:latest ${{ secrets.ECR_REPO_URI }}:latest
+        docker push ${{ secrets.ECR_REPO_URI }}:latest
+
+    - name: Update ECS Service
+      run: |
+        aws ecs update-service --cluster t2s-cluster --service t2s-service --force-new-deployment
+```
+
+---
+
+## Deployment Instructions (for Non-Technical Users)
+
+### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/Here2ServeU/express-t2s-app-v2.git
-cd express-t2s-app-v2
+git clone https://github.com/Here2ServeU/express-t2s-app.git
+cd express-t2s-app/express-t2s-app-v3
 ```
 
----
+### Step 2: Add Secrets to GitHub
 
-### 2. Install Node.js (If not already installed)
+Go to your GitHub repo → Settings → Secrets and variables → Actions → New repository secret.
 
-Download it from [https://nodejs.org](https://nodejs.org)  
-Then run:
+Add these keys:
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `AWS_REGION` (e.g., `us-east-1`)
+- `ECR_REPO_URI` (e.g., `123456789.dkr.ecr.us-east-1.amazonaws.com/t2s-web`)
+
+### Step 3: Push Changes
+
+Once you push changes to the `main` branch, the GitHub Actions workflow is triggered automatically.
 
 ```bash
-npm install
-node index.js
+git add .
+git commit -m "Test deployment to ECS"
+git push origin main
 ```
 
-Now visit: `http://localhost:3000` in your browser.
+### Step 4: Monitor Deployment
+
+- Log in to [AWS Console](https://console.aws.amazon.com/)
+- Go to ECS → Clusters → `t2s-cluster` → `t2s-service`
+- Confirm task is running and attached to a load balancer
+
+### Step 5: Visit Your App
+
+Use the DNS name from your ECS Load Balancer to access your deployed app in the browser.
 
 ---
 
-## Understand Each File (Line by Line)
+## Next Step
 
-### `index.js`
-
-```js
-const express = require('express');           // Loads Express
-const app = express();                        // Initializes the app
-const path = require('path');                 // Helps find folder paths
-
-app.use(express.static('public'));            // Tells Express to serve files from /public
-
-app.use(express.urlencoded({ extended: true }));  // Helps process form data
-
-app.post('/signup', (req, res) => {
-  const { fullName, email, interests } = req.body;
-  console.log('Signup received:', fullName, email, interests);
-  res.send('Thank you for signing up!');
-});
-
-app.listen(3000, () => console.log('App is running on http://localhost:3000'));
-```
+Move to **Version 4** to:
+- Create an EKS (Elastic Kubernetes Service) cluster with Terraform
+- Package app using Helm
+- Deploy via GitOps with ArgoCD
 
 ---
 
-### `.gitignore`
+## Author
 
-```txt
-node_modules/       # Exclude Node.js libraries
-.env                # Don't upload secret environment variables
-.vscode/            # Ignore local editor settings
-logs
-*.log
-terraform/
-*.tfstate*
-```
-
----
-
-### `Dockerfile`
-
-```dockerfile
-FROM node:18                        # Use official Node 18 image
-WORKDIR /app                        # Set working directory inside the container
-COPY . .                            # Copy everything into /app
-RUN npm install                     # Install dependencies
-EXPOSE 3000                         # Open port 3000 for the app
-CMD ["node", "index.js"]            # Start the app
-```
-
----
-
-### `scripts/bash_deploy_to_ecr.sh`
-
-```bash
-#!/bin/bash
-REPO_NAME="express-t2s-ecr"
-AWS_REGION="us-east-1"
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-
-# Login to AWS ECR
-aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
-
-# Create repo if not exist
-aws ecr describe-repositories --repository-names $REPO_NAME || aws ecr create-repository --repository-name $REPO_NAME
-
-# Build & Push
-docker build -t $REPO_NAME .
-docker tag $REPO_NAME:latest $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$REPO_NAME
-docker push $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$REPO_NAME
-```
-
----
-
-### `scripts/deploy_to_ecr.py`
-
-```python
-import subprocess
-
-# Replace with your info
-repo = "express-t2s-ecr"
-region = "us-east-1"
-
-def run(cmd):
-    subprocess.run(cmd, shell=True, check=True)
-
-account_id = subprocess.getoutput("aws sts get-caller-identity --query Account --output text")
-login_cmd = f"aws ecr get-login-password --region {region} | docker login --username AWS --password-stdin {account_id}.dkr.ecr.{region}.amazonaws.com"
-run(login_cmd)
-
-# Build, tag, push
-run(f"docker build -t {repo} .")
-run(f"docker tag {repo}:latest {account_id}.dkr.ecr.{region}.amazonaws.com/{repo}")
-run(f"docker push {account_id}.dkr.ecr.{region}.amazonaws.com/{repo}")
-```
-
----
-
-### Terraform
-
-#### `main.tf`
-
-```hcl
-provider "aws" {
-  region = var.aws_region
-}
-
-resource "aws_ecr_repository" "app" {
-  name = var.repo_name
-}
-```
-
-#### `variables.tf`
-
-```hcl
-variable "aws_region" {
-  default = "us-east-1"
-}
-
-variable "repo_name" {
-  default = "express-t2s-ecr"
-}
-```
-
-#### `terraform.tfvars`
-
-```hcl
-aws_region = "us-east-1"
-repo_name  = "express-t2s-ecr"
-```
-
-Run:
-
-```bash
-cd terraform
-terraform init
-terraform apply
-```
-
----
-
-## Final Project Structure
-
-```
-express-t2s-app-v2/
-├── public/index.html
-├── index.js
-├── Dockerfile
-├── .gitignore
-├── scripts/
-│   ├── bash_deploy_to_ecr.sh
-│   └── deploy_to_ecr.py
-├── terraform/
-│   ├── main.tf
-│   ├── variables.tf
-│   └── terraform.tfvars
-├── README.md
-```
-
----
-
-## About the Author
-
-**Dr. Emmanuel Naweji**  
-Cloud | DevOps | SRE | FinOps | AI  
-Helping engineers and organizations build real, scalable infrastructure.
-
-- [LinkedIn](https://linkedin.com/in/ready2assist/)
-- [GitHub](https://github.com/Here2ServeU)
-
-© 2025 Emmanuel Naweji. All rights reserved.
+**Emmanuel Naweji, 2025**  
+Cloud | DevOps | SRE | FinOps | AI Engineer  
+GitHub: [Here2ServeU](https://github.com/Here2ServeU)
 
