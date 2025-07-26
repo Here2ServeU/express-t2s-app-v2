@@ -1,44 +1,71 @@
-# Express T2S App - Version 2 (Beginner Friendly)
+# Express T2S App - Beginner-Friendly Guide (Version 2)
 
-## Purpose
+Welcome to the **T2S Express App** — an easy-to-follow project designed for complete beginners who want to learn how to build, package, and deploy a web application like a pro! This version is ideal even for those with no technical background.
 
-This version introduces how to containerize a Node.js + Express web application, build a Docker image, and push it to Amazon Elastic Container Registry (ECR) using various tools. It also explains the automation scripts used, line by line, so that even someone with no prior experience can follow.
+## What Are We Building?
 
----
+We’re building a simple web app using **Node.js** and **Express**, turning it into a **Docker container**, and deploying it to **Amazon Web Services (AWS)** using **ECR** and **Fargate/ECS**.
 
-## What You Will Learn
+## Tools We’ll Use (Explained Simply)
 
-- What Docker, AWS CLI, and Terraform are
-- How to build and push Docker images to AWS
-- How to use Python and Bash scripts for automation
-- How to use Terraform to provision AWS infrastructure
+- **Node.js + Express** – Makes your app run in the backend.
+- **Docker** – Packages your app into a portable container.
+- **AWS CLI** – Allows you to interact with AWS from your computer.
+- **GitHub Actions** – Automates deployment when you push code.
+- **Python/Bash/Terraform Scripts** – Help automate complex tasks step-by-step.
 
----
-
-## Step-by-Step Breakdown
-
-### 1. Dockerfile
-
-This file tells Docker how to build your app.
+## Folder Structure
 
 ```
-FROM node:18
-WORKDIR /app
-COPY . .
-RUN npm install
-CMD ["node", "index.js"]
+express-t2s-app-v2/
+├── Dockerfile
+├── index.js
+├── package.json
+├── scripts/
+│   ├── push_to_ecr.py
+│   └── push_to_ecr.sh
+├── terraform/
+│   ├── main.tf
+│   └── variables.tf
+└── README.md
 ```
 
-- `FROM node:18` → Use Node.js version 18 as the base image
-- `WORKDIR /app` → Create a working directory inside the container
-- `COPY . .` → Copy all local files to the container
-- `RUN npm install` → Install project dependencies
-- `CMD ["node", "index.js"]` → Start the server
+## 1. Install Python
 
----
+**Windows:**
+- Visit https://www.python.org/downloads/windows/
+- Download and install Python.
+- During setup, make sure to check “Add Python to PATH”.
 
-### 2. Python Script (push_to_ecr.py)
+**Mac:**
+- Open Terminal.
+- Run: `brew install python`
 
+## 2. Install and Configure AWS CLI
+
+Install AWS CLI:
+- Windows: https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2-windows.html
+- Mac: Run in Terminal: `brew install awscli`
+
+Configure AWS CLI:
+```bash
+aws configure
+```
+You will enter:
+- Your AWS access key
+- Your secret key
+- Your preferred region (e.g. `us-east-1`)
+
+## 3. Build Docker Image
+
+This command packages your app into a container:
+```bash
+docker build -t t2s-web-app .
+```
+
+## 4. Use Python Script to Push to AWS ECR
+
+**File: `scripts/push_to_ecr.py`**
 ```python
 import boto3
 import subprocess
@@ -63,18 +90,14 @@ subprocess.run(f"docker tag {repo_name}:{image_tag} {repo_uri}:{image_tag}", she
 subprocess.run(f"docker push {repo_uri}:{image_tag}", shell=True, check=True)
 ```
 
-- Uses AWS SDK (`boto3`) to connect to AWS
-- Gets the account ID
-- Checks if the ECR repo exists; if not, creates it
-- Logs in to ECR
-- Builds Docker image
-- Tags the image for ECR
-- Pushes image to ECR
+Run the script:
+```bash
+python3 scripts/push_to_ecr.py
+```
 
----
+## 5. Use Bash Shell Script Instead
 
-### 3. Bash Script (push_to_ecr.sh)
-
+**File: `scripts/push_to_ecr.sh`**
 ```bash
 #!/bin/bash
 REPO_NAME=t2s-express-app
@@ -94,12 +117,14 @@ docker tag $REPO_NAME:$IMAGE_TAG $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/$REPO
 docker push $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/$REPO_NAME:$IMAGE_TAG
 ```
 
-Same as Python script, but written in Bash for Linux/macOS terminal users.
+Run it:
+```bash
+bash scripts/push_to_ecr.sh
+```
 
----
+## 6. Use Terraform to Create AWS ECR
 
-### 4. Terraform Script
-
+**File: `terraform/main.tf`**
 ```hcl
 provider "aws" {
   region = var.region
@@ -108,34 +133,16 @@ provider "aws" {
 resource "aws_ecr_repository" "app" {
   name = var.repo_name
 }
-
-resource "null_resource" "docker_push" {
-  provisioner "local-exec" {
-    command = <<EOT
-      aws ecr get-login-password --region ${var.region} | docker login --username AWS --password-stdin ${var.account_id}.dkr.ecr.${var.region}.amazonaws.com
-      docker build -t ${var.repo_name} ..
-      docker tag ${var.repo_name}:latest ${var.account_id}.dkr.ecr.${var.region}.amazonaws.com/${var.repo_name}:latest
-      docker push ${var.account_id}.dkr.ecr.${var.region}.amazonaws.com/${var.repo_name}:latest
-    EOT
-  }
-}
 ```
 
-- Uses the AWS provider
-- Creates an ECR repo
-- Pushes Docker image to ECR using shell commands
-
----
-
-### 5. Terraform Variables
-
+**File: `terraform/variables.tf`**
 ```hcl
 variable "region" {
-  description = "The region where you host your repo"
+  description = "The AWS region to use"
 }
 
 variable "repo_name" {
-  description = "The name you want to give to the repo"
+  description = "The name of the ECR repository"
 }
 
 variable "account_id" {
@@ -143,28 +150,62 @@ variable "account_id" {
 }
 ```
 
----
+Run it:
+```bash
+cd terraform/
+terraform init
+terraform apply
+```
 
-## Tools Explained
+## Clean Up Docker
 
-- **Docker**: Packages your app into containers that run the same everywhere
-- **AWS CLI**: Command-line tool to interact with AWS
-- **boto3**: Python SDK for AWS
-- **Terraform**: Infrastructure as Code tool to define AWS resources
-- **GitHub Actions**: Automates build and deployment pipelines
+Stop containers:
+```bash
+docker ps
+docker stop <container_id>
+```
 
----
+Remove stopped containers:
+```bash
+docker container prune
+```
 
-## Next Step
+Remove unused images:
+```bash
+docker image prune
+```
 
-After mastering this version, continue to **Version 3** to:
-- Automate everything using GitHub Actions CI/CD
-- Deploy to AWS ECS Fargate with full pipeline
+Remove everything:
+```bash
+docker system prune -a
+```
 
----
+## Python Virtual Environment
+
+Create and activate environment:
+```bash
+python3 -m venv venv
+source venv/bin/activate     # Mac/Linux
+venv\Scripts\activate      # Windows
+```
+
+Deactivate:
+```bash
+deactivate
+```
+
+## Clean Up Terraform
+
+Destroy all infrastructure:
+```bash
+terraform destroy
+```
 
 ## Author
 
-**Dr. Emmanuel Naweji, 2025**  
-Cloud | DevOps | SRE | FinOps | AI Engineer  
+**Dr. Emmanuel Naweji (2025)**  
+Cloud | DevOps | SRE | FinOps | AI Mentor  
 GitHub: [Here2ServeU](https://github.com/Here2ServeU)
+LinkedIn: [emmanuelnaweji](https://www.linkedin.com/in/ready2assist/) 
+Medium: [@here2serveyou](https://medium.com/@here2serveyou)  
+Book a Free 30-Minute Consultation: [naweji.setmore.com](https://here4you.setmore.com/emmanuel)
