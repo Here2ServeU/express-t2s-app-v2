@@ -1,163 +1,170 @@
-# Express T2S App - Version 2
+# Express T2S App - Version 2 (Beginner Friendly)
 
 ## Purpose
 
-This version deploys the Dockerized Express T2S web application to AWS using ECS (Elastic Container Service) with Fargate, a serverless container compute engine. It also introduces a GitHub Actions CI/CD pipeline that automatically builds the Docker image, pushes it to AWS ECR (Elastic Container Registry), and triggers deployment to ECS.
-
-This version is ideal for those who want to learn how to automate deployment pipelines using real-world tools used in DevOps and Cloud Engineering.
+This version introduces how to containerize a Node.js + Express web application, build a Docker image, and push it to Amazon Elastic Container Registry (ECR) using various tools. It also explains the automation scripts used, line by line, so that even someone with no prior experience can follow.
 
 ---
 
-## Features
+## What You Will Learn
 
-- **GitHub Actions CI/CD pipeline** for build and deployment
-- **Docker image built locally or in pipeline**
-- **AWS ECR** integration for image hosting
-- **AWS ECS (Fargate)** for serverless container orchestration
-- **Load balancer** for handling traffic
-- Environment variables managed through AWS
+- What Docker, AWS CLI, and Terraform are
+- How to build and push Docker images to AWS
+- How to use Python and Bash scripts for automation
+- How to use Terraform to provision AWS infrastructure
 
 ---
 
-## Project Structure
+## Step-by-Step Breakdown
+
+### 1. Dockerfile
+
+This file tells Docker how to build your app.
 
 ```
-express-t2s-app-v3/
-├── .github/
-│   └── workflows/
-│       └── ci.yml                # GitHub Actions pipeline definition
-├── Dockerfile                    # Docker build instructions
-├── index.js                      # Node.js + Express server
-├── package.json
-└── README.md
+FROM node:18
+WORKDIR /app
+COPY . .
+RUN npm install
+CMD ["node", "index.js"]
 ```
 
----
-
-## Prerequisites
-
-Before deploying, ensure you have the following:
-
-- **GitHub account** with repository created
-- **AWS account** with:
-  - ECR repository created
-  - ECS Cluster and Fargate task role set up
-  - IAM user with programmatic access
-- **AWS CLI** installed and configured on your machine
-- **GitHub Secrets** added:
-  - `AWS_ACCESS_KEY_ID`
-  - `AWS_SECRET_ACCESS_KEY`
-  - `AWS_REGION`
-  - `ECR_REPO_URI`
+- `FROM node:18` → Use Node.js version 18 as the base image
+- `WORKDIR /app` → Create a working directory inside the container
+- `COPY . .` → Copy all local files to the container
+- `RUN npm install` → Install project dependencies
+- `CMD ["node", "index.js"]` → Start the server
 
 ---
 
-## How the Deployment Works (Step-by-Step)
+### 2. Python Script (push_to_ecr.py)
 
-1. **Docker Image Built**:
-   The GitHub Actions workflow builds the Docker image from your `Dockerfile`.
+```python
+import boto3
+import subprocess
 
-2. **Push Image to ECR**:
-   The built image is pushed to your AWS ECR repository.
+repo_name = "t2s-express-app"
+region = "us-east-1"
+image_tag = "latest"
 
-3. **Trigger ECS Update**:
-   The ECS task definition is updated to use the new image. ECS then replaces the running task with the new one.
+ecr = boto3.client('ecr', region_name=region)
+sts = boto3.client('sts')
+account_id = sts.get_caller_identity()["Account"]
+repo_uri = f"{account_id}.dkr.ecr.{region}.amazonaws.com/{repo_name}"
 
----
+try:
+    ecr.describe_repositories(repositoryNames=[repo_name])
+except ecr.exceptions.RepositoryNotFoundException:
+    ecr.create_repository(repositoryName=repo_name)
 
-## GitHub Actions Workflow Explained
-
-Located at `.github/workflows/ci.yml`:
-
-```yaml
-name: Build and Deploy to ECS
-
-on:
-  push:
-    branches:
-      - main
-
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout Code
-      uses: actions/checkout@v3
-
-    - name: Login to AWS ECR
-      run: |
-        aws configure set region ${{ secrets.AWS_REGION }}
-        aws ecr get-login-password | docker login --username AWS --password-stdin ${{ secrets.ECR_REPO_URI }}
-
-    - name: Build Docker Image
-      run: docker build -t t2s-web .
-
-    - name: Tag and Push Docker Image
-      run: |
-        docker tag t2s-web:latest ${{ secrets.ECR_REPO_URI }}:latest
-        docker push ${{ secrets.ECR_REPO_URI }}:latest
-
-    - name: Update ECS Service
-      run: |
-        aws ecs update-service --cluster t2s-cluster --service t2s-service --force-new-deployment
+subprocess.run(f"aws ecr get-login-password --region {region} | docker login --username AWS --password-stdin {repo_uri}", shell=True, check=True)
+subprocess.run(f"docker build -t {repo_name} .", shell=True, check=True)
+subprocess.run(f"docker tag {repo_name}:{image_tag} {repo_uri}:{image_tag}", shell=True, check=True)
+subprocess.run(f"docker push {repo_uri}:{image_tag}", shell=True, check=True)
 ```
 
+- Uses AWS SDK (`boto3`) to connect to AWS
+- Gets the account ID
+- Checks if the ECR repo exists; if not, creates it
+- Logs in to ECR
+- Builds Docker image
+- Tags the image for ECR
+- Pushes image to ECR
+
 ---
 
-## Deployment Instructions (for Non-Technical Users)
-
-### Step 1: Clone the Repository
+### 3. Bash Script (push_to_ecr.sh)
 
 ```bash
-git clone https://github.com/Here2ServeU/express-t2s-app.git
-cd express-t2s-app/express-t2s-app-v3
+#!/bin/bash
+REPO_NAME=t2s-express-app
+REGION=us-east-1
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+IMAGE_TAG=latest
+
+aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
+
+aws ecr describe-repositories --repository-names $REPO_NAME --region $REGION > /dev/null 2>&1
+if [ $? -ne 0 ]; then
+  aws ecr create-repository --repository-name $REPO_NAME --region $REGION
+fi
+
+docker build -t $REPO_NAME .
+docker tag $REPO_NAME:$IMAGE_TAG $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/$REPO_NAME:$IMAGE_TAG
+docker push $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/$REPO_NAME:$IMAGE_TAG
 ```
 
-### Step 2: Add Secrets to GitHub
+Same as Python script, but written in Bash for Linux/macOS terminal users.
 
-Go to your GitHub repo → Settings → Secrets and variables → Actions → New repository secret.
+---
 
-Add these keys:
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-- `AWS_REGION` (e.g., `us-east-1`)
-- `ECR_REPO_URI` (e.g., `123456789.dkr.ecr.us-east-1.amazonaws.com/t2s-web`)
+### 4. Terraform Script
 
-### Step 3: Push Changes
+```hcl
+provider "aws" {
+  region = var.region
+}
 
-Once you push changes to the `main` branch, the GitHub Actions workflow is triggered automatically.
+resource "aws_ecr_repository" "app" {
+  name = var.repo_name
+}
 
-```bash
-git add .
-git commit -m "Test deployment to ECS"
-git push origin main
+resource "null_resource" "docker_push" {
+  provisioner "local-exec" {
+    command = <<EOT
+      aws ecr get-login-password --region ${var.region} | docker login --username AWS --password-stdin ${var.account_id}.dkr.ecr.${var.region}.amazonaws.com
+      docker build -t ${var.repo_name} ..
+      docker tag ${var.repo_name}:latest ${var.account_id}.dkr.ecr.${var.region}.amazonaws.com/${var.repo_name}:latest
+      docker push ${var.account_id}.dkr.ecr.${var.region}.amazonaws.com/${var.repo_name}:latest
+    EOT
+  }
+}
 ```
 
-### Step 4: Monitor Deployment
+- Uses the AWS provider
+- Creates an ECR repo
+- Pushes Docker image to ECR using shell commands
 
-- Log in to [AWS Console](https://console.aws.amazon.com/)
-- Go to ECS → Clusters → `t2s-cluster` → `t2s-service`
-- Confirm task is running and attached to a load balancer
+---
 
-### Step 5: Visit Your App
+### 5. Terraform Variables
 
-Use the DNS name from your ECS Load Balancer to access your deployed app in the browser.
+```hcl
+variable "region" {
+  description = "The region where you host your repo"
+}
+
+variable "repo_name" {
+  description = "The name you want to give to the repo"
+}
+
+variable "account_id" {
+  description = "Your AWS account ID"
+}
+```
+
+---
+
+## Tools Explained
+
+- **Docker**: Packages your app into containers that run the same everywhere
+- **AWS CLI**: Command-line tool to interact with AWS
+- **boto3**: Python SDK for AWS
+- **Terraform**: Infrastructure as Code tool to define AWS resources
+- **GitHub Actions**: Automates build and deployment pipelines
 
 ---
 
 ## Next Step
 
-Move to **Version 4** to:
-- Create an EKS (Elastic Kubernetes Service) cluster with Terraform
-- Package app using Helm
-- Deploy via GitOps with ArgoCD
+After mastering this version, continue to **Version 3** to:
+- Automate everything using GitHub Actions CI/CD
+- Deploy to AWS ECS Fargate with full pipeline
 
 ---
 
 ## Author
 
-**Emmanuel Naweji, 2025**  
+**Dr. Emmanuel Naweji, 2025**  
 Cloud | DevOps | SRE | FinOps | AI Engineer  
 GitHub: [Here2ServeU](https://github.com/Here2ServeU)
-
